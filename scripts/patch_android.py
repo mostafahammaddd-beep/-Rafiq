@@ -134,6 +134,13 @@ def enable_desugaring(text: str, is_kts: bool):
         new_text, count = re.subn(
             r"(compileOptions\s*\{)", lambda m: m.group(1) + "\n        " + flag, text, count=1
         )
+        if not count:
+            block = (
+                "\n    compileOptions {\n        " + flag + "\n    }"
+            )
+            new_text, count = re.subn(
+                r"(\bandroid\s*\{)", lambda m: m.group(1) + block, text, count=1
+            )
         if count:
             text = new_text
             changed = True
