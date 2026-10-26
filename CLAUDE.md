@@ -2,63 +2,63 @@
 
 ## طريقة العمل (Workflow)
 
-1. Claude **لا يشغّل أوامر `flutter`** في بيئته. ينشئ ملفات المشروع برمجياً (Python) ويضغطها في `rafiq_app_stepN.zip`.
-2. المستخدم يفك الضغط ويرفع المحتوى إلى **جذر** مستودع GitHub على فرع `main`، بحيث يظهر `.github/` و`pubspec.yaml` و`lib/` في الجذر مباشرة.
-3. GitHub Actions (`.github/workflows/android_build.yml`) ينفّذ: Java 17، Flutter stable، `flutter create --platforms=android .`، `flutter pub get`، `flutter analyze`، `flutter build apk --release`، ثم يرفع الـ APK باسم `rafiq-release-apk`.
-4. عند فشل البناء يلصق المستخدم سجل الخطأ، ونصلحه بأصغر تعديل ممكن.
+1. Claude **لا يشغّل أوامر `flutter`** في بيئته. ينشئ الملفات برمجياً (Python) ويضغطها في `rafiq_app_stepN.zip`.
+2. المستخدم يفك الضغط ويرفع المحتوى إلى **جذر** مستودع GitHub على فرع `main` (يجب أن يظهر `.github/` و`pubspec.yaml` و`lib/` و`scripts/` في الجذر).
+3. GitHub Actions (`.github/workflows/android_build.yml`) ينفّذ بالترتيب: Java 17، Flutter stable، `flutter create --platforms=android`، `scripts/patch_android.py`، `scripts/fetch_models.py`، `flutter pub get`، `flutter analyze --no-fatal-infos --no-fatal-warnings`، `flutter build apk --release`، رفع الـ APK باسم `rafiq-release-apk`.
+4. عند فشل البناء يلصق المستخدم سجل الخطأ ونصلحه بأصغر تعديل ممكن.
+5. سر المستودع `HF_TOKEN` (Settings → Secrets → Actions) لتحميل النموذج من Quran-Lab.
 
 ## قواعد صارمة
 
-- لا أكواد وهمية: كل ملف `.dart` و`.yaml` سليم برمجياً 100%.
-- `flutter analyze` يجب أن يمر بلا أخطاء ولا تحذيرات.
-- لا تُضاف مكتبة إلا في مرحلتها، وبإصدارات مستقرة.
+- لا أكواد وهمية: كل ملف `.dart` و`.yaml` و`.py` سليم برمجياً.
+- مجلد `android/` **يُولَّد في CI** ولا يُرفق. أي تعديل على الـ Manifest أو Gradle يتم في `scripts/patch_android.py` (يرفع `minSdk` إلى 24 على الأقل و`compileSdk` إلى 35 على الأقل دون خفضهما، ويضيف صلاحيات الميكروفون و`largeHeap`).
+- ملفات النموذج (`assets/models/*.onnx` و`tokens.txt` و`quran_phoneme_words.json`) **لا تُرفع إلى Git**؛ يحمّلها `fetch_models.py` في CI.
+- غياب النموذج لا يُفشل البناء (إلا بـ `require_model=true`)، والتطبيق يتعامل معه وقت التشغيل.
 - التعديل على ملف موجود: أصغر تعديل ممكن، دون لمس ما لا يخصه.
-- مجلد `android/` **يُولَّد في CI** ولا يُرفق في الـ ZIP. أي تعديل على `AndroidManifest.xml` أو ملفات Gradle (مثل صلاحية الميكروفون أو `minSdk`) يتم عبر سكربت (مثل `scripts/patch_android.py`) تُضاف خطوة تشغيله في الـ workflow **بعد** `flutter create`.
-- الواجهة عربية بالكامل واتجاهها RTL.
-- لا صلاحية إنترنت في الإصدار النهائي، ولا أي تتبّع.
+- الواجهة عربية RTL. لا صلاحية إنترنت ولا تتبّع.
+- أي نص قرآني جديد يوضع في `quran_seed.dart` ويُدقَّق على المصحف المطبوع.
 
-## الهيكل المعتمد للمجلدات
+## واجهات مكتبات صارمة
+
+- `record` 5.x: `AudioRecorder().startStream(const RecordConfig(encoder: AudioEncoder.pcm16bits, sampleRate: 16000, numChannels: 1))`.
+- الصوت إلى sherpa-onnx: `Float32List` من PCM16 little-endian بالقسمة على `32768.0`.
+- `sherpa_onnx`: `initBindings()` مرة واحدة، `OnlineModelConfig(zipformer2Ctc: ..., tokens, modelType: 'zipformer2_ctc', numThreads: 2, provider: 'cpu')`، و`OnlineRecognizerConfig(model, feat: FeatureConfig(sampleRate: 16000, featureDim: 80))`.
+
+## الهيكل المعتمد
 
 ```
 .
 ├── .github/workflows/android_build.yml
-├── pubspec.yaml
-├── analysis_options.yaml
-├── PROJECT_SPEC.md
-├── CLAUDE.md
+├── scripts/{patch_android.py, fetch_models.py}
+├── assets/models/            # يُملأ في CI
+├── PROJECT_SPEC.md  CLAUDE.md  NOTICE.md
 ├── test/widget_test.dart
 └── lib/
     ├── main.dart
     ├── core/
-    │   └── theme/
-    │       ├── app_theme.dart
-    │       └── theme_mode_provider.dart
+    │   ├── theme/            # الثيم ووضع الليل/النهار
+    │   ├── data/             # quran_seed.dart
+    │   ├── database/         # sqflite + النماذج + المزودات
+    │   ├── tajweed/          # تحليل النص العثماني والأحكام
+    │   └── audio_engine/     # نسخ النموذج، الميكروفون، sherpa، المقيّم، المعجم
     └── features/
-        ├── welcome/welcome_screen.dart
-        ├── mushaf/
-        ├── memorize_engine/
-        ├── age_modes/
-        └── teacher_dashboard/
+        ├── welcome/          # شاشة التجهيز (قاعدة البيانات + النموذج)
+        ├── home/             # التنقل السفلي
+        ├── mushaf/           # فهرس السور وشاشة السورة
+        ├── memorize_engine/  # جلسة التلاوة والتسميع (وضعان)
+        ├── teacher_dashboard/# الإحصائيات والتقارير
+        └── age_modes/        # مؤجَّل
 ```
-
-داخل كل Feature عند التنفيذ:
-
-```
-feature_name/
-├── data/          # مصادر البيانات والمستودعات (SQLite، ملفات، نماذج)
-├── domain/        # النماذج والمنطق الصرف دون اعتماد على Flutter
-└── presentation/  # الشاشات والـ Widgets ومزودات Riverpod
-```
-
-مجلد `core/` للأشياء المشتركة بين الـ features (ثيم، أدوات، ثوابت). لا يعتمد أي feature على feature آخر مباشرة، بل عبر `core/` أو مزودات Riverpod.
 
 ## معايير الكود
 
-- Riverpod 2.x: نستخدم `Notifier` و`NotifierProvider` مع تحديد الأنواع صراحةً.
-- `const` حيثما أمكن، وأنواع صريحة للمتغيرات والمعاملات.
-- نصوص الواجهة بالعربية، وأسماء الملفات والأصناف بالإنجليزية (snake_case للملفات).
-- الخطوط العربية (مثل Amiri أو خط المصحف العثماني) تُضاف كـ assets محلية في مرحلة المصحف، لا من الإنترنت.
+- Riverpod 2.x: `Notifier` و`NotifierProvider`، وأنواع صريحة.
+- `const` حيثما أمكن، وأنواع صريحة للمتغيرات.
+- الجلسة الصوتية تُدار بـ `ChangeNotifier` (`RecitationSessionController`) داخل الشاشة.
+- تعديل خوارزمية المطابقة في `recitation_evaluator.dart` يرافقه تحديث `test/widget_test.dart`.
 
-## مراجع
+## نقاط معروفة للمعايرة
 
-- الرؤية والإخلاء الشرعي وخطة المراحل: `PROJECT_SPEC.md`.
+- عتبات القبول: 0.25 مع المعجم، 0.38 مع المولّد التقريبي (في `recitation_session_controller.dart`).
+- فك الترميز يجري على الخيط الرئيسي؛ المرحلة القادمة تنقله إلى Isolate.
+- صيغة `quran_phoneme_words.json` غير موثقة، والمحلل في `phoneme_lexicon_service.dart` متسامح ويتجاهل ما لا يفهمه.

@@ -1,57 +1,85 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../core/theme/theme_mode_provider.dart';
+import '../../core/audio_engine/engine_providers.dart';
+import '../../core/database/database_providers.dart';
+import '../home/home_shell.dart';
 
-class _FeatureInfo {
-  const _FeatureInfo(this.icon, this.label);
-
-  final IconData icon;
-  final String label;
-}
-
-const List<_FeatureInfo> _upcomingFeatures = <_FeatureInfo>[
-  _FeatureInfo(Icons.menu_book_rounded, 'المصحف'),
-  _FeatureInfo(Icons.psychology_alt_rounded, 'محرك الحفظ'),
-  _FeatureInfo(Icons.family_restroom_rounded, 'أوضاع الأعمار'),
-  _FeatureInfo(Icons.school_rounded, 'لوحة المعلم'),
-];
-
-class WelcomeScreen extends ConsumerWidget {
+/// Splash / bootstrap screen: opens the database, prepares the acoustic
+/// model and then moves on to the app.
+class WelcomeScreen extends ConsumerStatefulWidget {
   const WelcomeScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final ThemeData theme = Theme.of(context);
-    final ColorScheme scheme = theme.colorScheme;
-    final bool isDark = theme.brightness == Brightness.dark;
+  ConsumerState<WelcomeScreen> createState() => _WelcomeScreenState();
+}
+
+class _WelcomeScreenState extends ConsumerState<WelcomeScreen> {
+  bool _navigated = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        ref.read(modelPrepProvider.notifier).prepare();
+      }
+    });
+  }
+
+  void _goHome() {
+    if (_navigated) {
+      return;
+    }
+    _navigated = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute<void>(builder: (BuildContext context) => const HomeShell()),
+      );
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
+    final PrepState prep = ref.watch(modelPrepProvider);
+    final AsyncValue<Object> db = ref.watch(databaseProvider);
+
+    final bool dbReady = db.hasValue;
+    final bool dbFailed = db.hasError;
+
+    if (dbReady && prep.stage == PrepStage.ready) {
+      _goHome();
+    }
+
+    String message = prep.message;
+    if (dbFailed) {
+      message = 'تعذّر فتح قاعدة البيانات: ${db.error}';
+    } else if (!dbReady && prep.stage == PrepStage.ready) {
+      message = 'جارٍ تجهيز قاعدة البيانات…';
+    } else if (message.isEmpty) {
+      message = 'جارٍ التجهيز…';
+    }
+
+    final bool canContinueWithoutModel =
+        dbReady && (prep.stage == PrepStage.modelMissing || prep.stage == PrepStage.failed);
 
     return Scaffold(
-      appBar: AppBar(
-        actions: <Widget>[
-          IconButton(
-            tooltip: isDark ? 'الوضع النهاري' : 'الوضع الليلي',
-            icon: Icon(
-              isDark ? Icons.light_mode_rounded : Icons.dark_mode_rounded,
-            ),
-            onPressed: () {
-              ref.read(themeModeProvider.notifier).toggle(theme.brightness);
-            },
-          ),
-        ],
-      ),
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+            padding: const EdgeInsets.all(24),
             child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 520),
+              constraints: const BoxConstraints(maxWidth: 480),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: <Widget>[
                   Container(
-                    width: 112,
-                    height: 112,
+                    width: 104,
+                    height: 104,
                     alignment: Alignment.center,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
@@ -60,110 +88,54 @@ class WelcomeScreen extends ConsumerWidget {
                     ),
                     child: Icon(
                       Icons.menu_book_rounded,
-                      size: 56,
+                      size: 52,
                       color: scheme.onPrimaryContainer,
                     ),
                   ),
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 16),
                   Text(
                     'رَفِيق',
                     style: TextStyle(
-                      fontSize: 46,
+                      fontSize: 44,
                       fontWeight: FontWeight.w700,
                       height: 1.4,
                       color: scheme.primary,
                     ),
                   ),
                   Text(
-                    'RAFIQ',
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      letterSpacing: 6,
-                      color: scheme.onSurfaceVariant,
+                    'تطبيق وقفي مجاني لحفظ كتاب الله',
+                    style: TextStyle(fontSize: 16, color: scheme.onSurfaceVariant),
+                  ),
+                  const SizedBox(height: 32),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: LinearProgressIndicator(
+                      value: prep.stage == PrepStage.working ? prep.progress : null,
+                      minHeight: 8,
                     ),
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 14),
                   Text(
-                    'رفيقك في حفظ كتاب الله',
+                    message,
                     textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 18,
-                      color: scheme.onSurface,
-                    ),
+                    style: TextStyle(height: 1.7, color: scheme.onSurface),
                   ),
-                  const SizedBox(height: 28),
-                  Card(
-                    elevation: 0,
-                    color: scheme.primaryContainer,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.all(20),
-                      child: Column(
-                        children: <Widget>[
-                          Icon(
-                            Icons.volunteer_activism_rounded,
-                            color: scheme.onPrimaryContainer,
-                          ),
-                          const SizedBox(height: 10),
-                          Text(
-                            'تطبيق وقفي مجاني بالكامل، ابتغاء وجه الله تعالى.\n'
-                            'بلا إعلانات ولا اشتراكات، ويعمل على جهازك دون إنترنت.',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              fontSize: 16,
-                              height: 1.8,
-                              color: scheme.onPrimaryContainer,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    alignment: WrapAlignment.center,
-                    children: <Widget>[
-                      for (final _FeatureInfo feature in _upcomingFeatures)
-                        Chip(
-                          avatar: Icon(feature.icon, size: 18),
-                          label: Text(feature.label),
-                        ),
-                    ],
-                  ),
-                  const SizedBox(height: 28),
-                  SizedBox(
-                    width: double.infinity,
-                    child: FilledButton.icon(
+                  if (prep.stage == PrepStage.failed) ...<Widget>[
+                    const SizedBox(height: 14),
+                    OutlinedButton(
                       onPressed: () {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text(
-                              'الواجهة تعمل بنجاح، وخط البناء سليم بإذن الله',
-                              textAlign: TextAlign.center,
-                            ),
-                          ),
-                        );
+                        ref.read(modelPrepProvider.notifier).prepare(force: true);
                       },
-                      icon: const Icon(Icons.touch_app_rounded),
-                      label: const Text('اختبار الواجهة'),
+                      child: const Text('إعادة المحاولة'),
                     ),
-                  ),
-                  const SizedBox(height: 20),
-                  Text(
-                    'هذا التطبيق وسيلة مساعدة على الحفظ، ولا يغني عن التلقّي '
-                    'والمشافهة من معلّم متقن.',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 13,
-                      height: 1.7,
-                      color: scheme.onSurfaceVariant,
+                  ],
+                  if (canContinueWithoutModel) ...<Widget>[
+                    const SizedBox(height: 14),
+                    FilledButton(
+                      onPressed: _goHome,
+                      child: const Text('متابعة بدون التصحيح الصوتي'),
                     ),
-                  ),
+                  ],
                 ],
               ),
             ),

@@ -1,5 +1,17 @@
 import 'package:flutter/material.dart';
 
+/// Semantic colors used for live recitation feedback.
+class AppColors {
+  AppColors._();
+
+  static const Color correct = Color(0xFF2E7D32);
+  static const Color correctSoft = Color(0x332E7D32);
+  static const Color warning = Color(0xFFE08A00);
+  static const Color warningSoft = Color(0x33E08A00);
+  static const Color error = Color(0xFFC62828);
+  static const Color errorSoft = Color(0x33C62828);
+}
+
 /// Calm Islamic theme: emerald green + soft gold on warm cream (light)
 /// or deep green-black (dark).
 class AppTheme {
@@ -41,10 +53,10 @@ class AppTheme {
       ),
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
-          minimumSize: const Size(64, 54),
+          minimumSize: const Size(64, 52),
           shape: const StadiumBorder(),
           textStyle: const TextStyle(
-            fontSize: 18,
+            fontSize: 17,
             fontWeight: FontWeight.w600,
           ),
         ),
