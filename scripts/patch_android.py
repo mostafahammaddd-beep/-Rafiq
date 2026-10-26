@@ -127,26 +127,22 @@ def patch_gradle(text: str, is_kts: bool):
 
 
 def enable_desugaring(text: str, is_kts: bool):
-    """Adds core library desugaring. Returns (new_text, changed)."""
+    """Appends a second `android { compileOptions { ... } }` block plus the
+    desugaring dependency. Appending avoids depending on how the generated
+    template is laid out. Returns (new_text, changed)."""
     changed = False
-    if "isCoreLibraryDesugaringEnabled" not in text and "coreLibraryDesugaringEnabled" not in text:
-        flag = "isCoreLibraryDesugaringEnabled = true" if is_kts else "coreLibraryDesugaringEnabled true"
-        new_text, count = re.subn(
-            r"(compileOptions\s*\{)", lambda m: m.group(1) + "\n        " + flag, text, count=1
-        )
-        if not count:
-            block = (
-                "\n    compileOptions {\n        " + flag + "\n    }"
-            )
-            new_text, count = re.subn(
-                r"(\bandroid\s*\{)", lambda m: m.group(1) + block, text, count=1
-            )
-        if count:
-            text = new_text
-            changed = True
-    if "coreLibraryDesugaring" not in text.replace("isCoreLibraryDesugaringEnabled", "").replace(
-        "coreLibraryDesugaringEnabled", ""
-    ):
+    flag_present = "isCoreLibraryDesugaringEnabled = true" in text or (
+        "coreLibraryDesugaringEnabled true" in text
+    )
+    if not flag_present:
+        if is_kts:
+            block = "\n\nandroid {\n    compileOptions {\n        isCoreLibraryDesugaringEnabled = true\n    }\n}\n"
+        else:
+            block = "\n\nandroid {\n    compileOptions {\n        coreLibraryDesugaringEnabled true\n    }\n}\n"
+        text = text.rstrip() + block
+        changed = True
+    dependency_present = DESUGAR_LIB in text
+    if not dependency_present:
         if is_kts:
             text = text.rstrip() + '\n\ndependencies {\n    coreLibraryDesugaring("' + DESUGAR_LIB + '")\n}\n'
         else:
@@ -195,6 +191,9 @@ def main() -> int:
             changes.append("core library desugaring")
         if new_text != text:
             path.write_text(new_text, encoding="utf-8")
+            print("----- final {0} -----".format(path))
+            print(new_text)
+            print("----- end -----")
             print("{0} patched: {1}".format(path, "; ".join(changes)))
         else:
             print("{0}: no change needed".format(path))
