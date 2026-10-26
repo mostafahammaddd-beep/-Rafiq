@@ -3,14 +3,20 @@
 
 - Injects RECORD_AUDIO and MODIFY_AUDIO_SETTINGS permissions before <application>.
 - Adds android:largeHeap="true" to the <application> tag.
+- Adds notification permissions (POST_NOTIFICATIONS, RECEIVE_BOOT_COMPLETED, VIBRATE).
+- Sets the launcher label to "رَفِيق".
 - Raises minSdk to at least 24 and compileSdk to at least 35 (never lowers them),
   in both build.gradle.kts and build.gradle.
+- Enables core library desugaring (required by flutter_local_notifications).
+- Copies scripts/android_res/* (launcher icons, adaptive icon, notification icon)
+  into android/app/src/main/res/.
 
 The script is idempotent: running it twice changes nothing the second time.
 """
 
 import pathlib
 import re
+import shutil
 import sys
 
 MANIFEST = pathlib.Path("android/app/src/main/AndroidManifest.xml")
@@ -22,7 +28,15 @@ GRADLE_FILES = (
 PERMISSIONS = (
     "android.permission.RECORD_AUDIO",
     "android.permission.MODIFY_AUDIO_SETTINGS",
+    "android.permission.POST_NOTIFICATIONS",
+    "android.permission.RECEIVE_BOOT_COMPLETED",
+    "android.permission.VIBRATE",
 )
+
+APP_LABEL = "رَفِيق"
+RES_SRC = pathlib.Path("scripts/android_res")
+RES_DST = pathlib.Path("android/app/src/main/res")
+DESUGAR_LIB = "com.android.tools:desugar_jdk_libs:2.1.4"
 
 MIN_SDK = 24
 COMPILE_SDK = 35
@@ -47,8 +61,11 @@ def patch_manifest(text: str) -> str:
     if tag_match is None:
         raise RuntimeError("<application> tag not found after permission injection")
     tag = tag_match.group(0)
-    if "android:largeHeap" not in tag:
-        new_tag = tag.replace("<application", '<application android:largeHeap="true"', 1)
+    new_tag = tag
+    if "android:largeHeap" not in new_tag:
+        new_tag = new_tag.replace("<application", '<application android:largeHeap="true"', 1)
+    new_tag = re.sub(r'android:label="[^"]*"', 'android:label="{0}"'.format(APP_LABEL), new_tag, count=1)
+    if new_tag != tag:
         text = text[: tag_match.start()] + new_tag + text[tag_match.end():]
     return text
 
@@ -109,6 +126,43 @@ def patch_gradle(text: str, is_kts: bool):
     return text, changes
 
 
+def enable_desugaring(text: str, is_kts: bool):
+    """Adds core library desugaring. Returns (new_text, changed)."""
+    changed = False
+    if "isCoreLibraryDesugaringEnabled" not in text and "coreLibraryDesugaringEnabled" not in text:
+        flag = "isCoreLibraryDesugaringEnabled = true" if is_kts else "coreLibraryDesugaringEnabled true"
+        new_text, count = re.subn(
+            r"(compileOptions\s*\{)", lambda m: m.group(1) + "\n        " + flag, text, count=1
+        )
+        if count:
+            text = new_text
+            changed = True
+    if "coreLibraryDesugaring" not in text.replace("isCoreLibraryDesugaringEnabled", "").replace(
+        "coreLibraryDesugaringEnabled", ""
+    ):
+        if is_kts:
+            text = text.rstrip() + '\n\ndependencies {\n    coreLibraryDesugaring("' + DESUGAR_LIB + '")\n}\n'
+        else:
+            text = text.rstrip() + "\n\ndependencies {\n    coreLibraryDesugaring '" + DESUGAR_LIB + "'\n}\n"
+        changed = True
+    return text, changed
+
+
+def copy_resources() -> None:
+    if not RES_SRC.exists():
+        print("::warning::{0} not found; launcher icons were not installed".format(RES_SRC))
+        return
+    count = 0
+    for src in sorted(RES_SRC.rglob("*")):
+        if not src.is_file():
+            continue
+        dst = RES_DST / src.relative_to(RES_SRC)
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(src, dst)
+        count += 1
+    print("Copied {0} resource files into {1}".format(count, RES_DST))
+
+
 def main() -> int:
     if not MANIFEST.exists():
         print("::error::{0} not found. Did `flutter create` run?".format(MANIFEST))
@@ -129,6 +183,9 @@ def main() -> int:
         found_gradle = True
         text = path.read_text(encoding="utf-8")
         new_text, changes = patch_gradle(text, path.suffix == ".kts")
+        new_text, desugar_changed = enable_desugaring(new_text, path.suffix == ".kts")
+        if desugar_changed:
+            changes.append("core library desugaring")
         if new_text != text:
             path.write_text(new_text, encoding="utf-8")
             print("{0} patched: {1}".format(path, "; ".join(changes)))
@@ -137,6 +194,8 @@ def main() -> int:
 
     if not found_gradle:
         print("::warning::No android/app/build.gradle(.kts) found; SDK levels were not touched")
+
+    copy_resources()
     return 0
 
 

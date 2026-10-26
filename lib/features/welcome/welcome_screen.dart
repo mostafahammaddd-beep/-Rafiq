@@ -3,10 +3,15 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/audio_engine/engine_providers.dart';
 import '../../core/database/database_providers.dart';
+import '../../core/profile/profile_repository.dart';
+import '../../core/profile/reminder_service.dart';
+import '../../core/profile/user_profile.dart';
 import '../home/home_shell.dart';
+import '../onboarding/onboarding_screen.dart';
 
-/// Splash / bootstrap screen: opens the database, prepares the acoustic
-/// model and then moves on to the app.
+/// App gate: starts preparing the acoustic model in the background, shows
+/// the first-run onboarding when there is no profile, then the preparation
+/// progress, then the app.
 class WelcomeScreen extends ConsumerStatefulWidget {
   const WelcomeScreen({super.key});
 
@@ -16,6 +21,7 @@ class WelcomeScreen extends ConsumerStatefulWidget {
 
 class _WelcomeScreenState extends ConsumerState<WelcomeScreen> {
   bool _navigated = false;
+  bool _remindersSynced = false;
 
   @override
   void initState() {
@@ -42,8 +48,29 @@ class _WelcomeScreenState extends ConsumerState<WelcomeScreen> {
     });
   }
 
+  void _syncReminders(UserProfile profile) {
+    if (_remindersSynced) {
+      return;
+    }
+    _remindersSynced = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ReminderService.scheduleDaily(profile);
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
+    final AsyncValue<UserProfile?> profileAsync = ref.watch(profileProvider);
+
+    if (profileAsync.value == null && profileAsync.isLoading) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+    final UserProfile? profile = profileAsync.value;
+    if (profile == null) {
+      return const OnboardingScreen();
+    }
+    _syncReminders(profile);
+
     final ColorScheme scheme = Theme.of(context).colorScheme;
     final PrepState prep = ref.watch(modelPrepProvider);
     final AsyncValue<Object> db = ref.watch(databaseProvider);
@@ -64,8 +91,8 @@ class _WelcomeScreenState extends ConsumerState<WelcomeScreen> {
       message = 'جارٍ التجهيز…';
     }
 
-    final bool canContinueWithoutModel =
-        dbReady && (prep.stage == PrepStage.modelMissing || prep.stage == PrepStage.failed);
+    final bool canContinueWithoutModel = dbReady &&
+        (prep.stage == PrepStage.modelMissing || prep.stage == PrepStage.failed);
 
     return Scaffold(
       body: SafeArea(
@@ -77,34 +104,27 @@ class _WelcomeScreenState extends ConsumerState<WelcomeScreen> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: <Widget>[
-                  Container(
-                    width: 104,
-                    height: 104,
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: scheme.primaryContainer,
-                      border: Border.all(color: scheme.secondary, width: 2.5),
-                    ),
-                    child: Icon(
-                      Icons.menu_book_rounded,
-                      size: 52,
-                      color: scheme.onPrimaryContainer,
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(32),
+                    child: Image.asset(
+                      'assets/images/logo.png',
+                      width: 130,
+                      height: 130,
                     ),
                   ),
                   const SizedBox(height: 16),
                   Text(
-                    'رَفِيق',
+                    'أهلاً بك يا ${profile.name}',
                     style: TextStyle(
-                      fontSize: 44,
-                      fontWeight: FontWeight.w700,
-                      height: 1.4,
+                      fontSize: 26,
+                      fontWeight: FontWeight.w800,
                       color: scheme.primary,
                     ),
                   ),
+                  const SizedBox(height: 6),
                   Text(
                     'تطبيق وقفي مجاني لحفظ كتاب الله',
-                    style: TextStyle(fontSize: 16, color: scheme.onSurfaceVariant),
+                    style: TextStyle(fontSize: 15, color: scheme.onSurfaceVariant),
                   ),
                   const SizedBox(height: 32),
                   ClipRRect(

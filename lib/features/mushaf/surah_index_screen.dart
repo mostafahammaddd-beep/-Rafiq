@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/database/database_providers.dart';
 import '../../core/database/models.dart';
+import '../../core/profile/profile_repository.dart';
+import '../../core/profile/user_profile.dart';
 import '../../core/tajweed/arabic_text.dart';
 import '../../core/theme/theme_mode_provider.dart';
 import 'surah_screen.dart';
@@ -16,6 +18,7 @@ class SurahIndexScreen extends ConsumerWidget {
     final bool isDark = theme.brightness == Brightness.dark;
     final AsyncValue<List<SurahOverview>> overviews =
         ref.watch(surahOverviewsProvider);
+    final UserProfile? profile = ref.watch(profileProvider).value;
 
     return Scaffold(
       appBar: AppBar(
@@ -39,11 +42,14 @@ class SurahIndexScreen extends ConsumerWidget {
             },
             child: ListView.separated(
               padding: const EdgeInsets.all(16),
-              itemCount: items.length,
+              itemCount: items.length + 1,
               separatorBuilder: (BuildContext context, int index) =>
                   const SizedBox(height: 10),
               itemBuilder: (BuildContext context, int index) {
-                return _SurahCard(overview: items[index]);
+                if (index == 0) {
+                  return _GreetingCard(profile: profile);
+                }
+                return _SurahCard(overview: items[index - 1]);
               },
             ),
           );
@@ -51,6 +57,51 @@ class SurahIndexScreen extends ConsumerWidget {
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (Object error, StackTrace stack) =>
             Center(child: Text('تعذّر تحميل السور: $error')),
+      ),
+    );
+  }
+}
+
+class _GreetingCard extends StatelessWidget {
+  const _GreetingCard({required this.profile});
+
+  final UserProfile? profile;
+
+  @override
+  Widget build(BuildContext context) {
+    final UserProfile? p = profile;
+    if (p == null) {
+      return const SizedBox.shrink();
+    }
+    final ColorScheme scheme = Theme.of(context).colorScheme;
+    final String goals = p.goals.map((GoalType g) => g.label).join(' • ');
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: scheme.primary, width: 1.4),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text(
+            'السلام عليكم يا ${p.name}',
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.w800,
+              color: scheme.primary,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'هدفك: $goals',
+            style: TextStyle(color: scheme.onSurface, height: 1.6),
+          ),
+          Text(
+            'وقتك اليوم: ${toArabicDigits(p.dailyMinutes)} دقيقة مع كتاب الله',
+            style: TextStyle(color: scheme.onSurfaceVariant),
+          ),
+        ],
       ),
     );
   }

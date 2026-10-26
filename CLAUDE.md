@@ -18,6 +18,14 @@
 - الواجهة عربية RTL. لا صلاحية إنترنت ولا تتبّع.
 - أي نص قرآني جديد يوضع في `quran_seed.dart` ويُدقَّق على المصحف المطبوع.
 
+## الهوية والإشعارات
+
+- الأيقونات جاهزة في `scripts/android_res/` وتُنسخ في CI؛ لا تُعدَّل `android/` يدوياً.
+- `flutter_local_notifications` مثبّتة على `^17.2.2` عمداً: واجهة `zonedSchedule` فيها تتطلب `uiLocalNotificationDateInterpretation` (أُزيل في 18+). الترقية تعني تعديل `reminder_service.dart`.
+- المكتبة تتطلب core library desugaring، ويفعّله `patch_android.py`.
+- جدولة الإشعارات تستعمل `TZDateTime.utc` من لحظة مطلقة محسوبة بالتوقيت المحلي، فلا حاجة لـ `flutter_timezone`.
+- الملف الشخصي في `profile.json` (لا في SQLite) عبر `ProfileRepository`.
+
 ## واجهات مكتبات صارمة
 
 - `record` 5.x: `AudioRecorder().startStream(const RecordConfig(encoder: AudioEncoder.pcm16bits, sampleRate: 16000, numChannels: 1))`.

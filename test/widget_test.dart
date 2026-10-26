@@ -1,6 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:rafiq_app/core/audio_engine/recitation_evaluator.dart';
 import 'package:rafiq_app/core/audio_engine/tajweed_checker.dart';
+import 'package:rafiq_app/core/profile/reminder_messages.dart';
+import 'package:rafiq_app/core/profile/user_profile.dart';
 import 'package:rafiq_app/core/tajweed/arabic_text.dart';
 import 'package:rafiq_app/core/tajweed/phonetic_script_builder.dart';
 import 'package:rafiq_app/core/tajweed/tajweed_rule.dart';
@@ -49,5 +51,23 @@ void main() {
     expect(splitAyahWords('وَٱسْتَغْفِرْهُ ۚ إِنَّهُۥ').length, 2);
     expect(buildPhoneticScript('قُلْ', atWaqf: false), 'قُل');
     expect(toArabicDigits(12), '١٢');
+  });
+
+  test('reminder messages differ from day to day', () {
+    const UserProfile profile = UserProfile(
+      name: 'أحمد',
+      age: 20,
+      goals: <GoalType>[GoalType.wird],
+      dailyMinutes: 15,
+      remindersEnabled: true,
+      reminderHour: 21,
+      reminderMinute: 0,
+    );
+    final Set<String> bodies = <String>{};
+    for (int day = 0; day < 8; day++) {
+      bodies.add(ReminderMessages.pick(dayNumber: day, profile: profile).body);
+    }
+    expect(bodies.length, 8);
+    expect(formatReminderTime(21, 5), '٩:٠٥ م');
   });
 }

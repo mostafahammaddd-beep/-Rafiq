@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../mushaf/surah_index_screen.dart';
+import '../settings/settings_screen.dart';
 import '../teacher_dashboard/stats_screen.dart';
 
 class HomeShell extends StatefulWidget {
@@ -21,6 +22,7 @@ class _HomeShellState extends State<HomeShell> {
         children: const <Widget>[
           SurahIndexScreen(),
           StatsScreen(),
+          SettingsScreen(),
         ],
       ),
       bottomNavigationBar: NavigationBar(
@@ -40,6 +42,11 @@ class _HomeShellState extends State<HomeShell> {
             icon: Icon(Icons.insights_outlined),
             selectedIcon: Icon(Icons.insights_rounded),
             label: 'الإحصائيات',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.person_outline_rounded),
+            selectedIcon: Icon(Icons.person_rounded),
+            label: 'حسابي',
           ),
         ],
       ),
