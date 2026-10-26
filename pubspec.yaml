@@ -17,6 +17,9 @@ dependencies:
   permission_handler: ^11.3.1
   sherpa_onnx: ^1.10.35
 
+dependency_overrides:
+  record_linux: ^1.2.1
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
